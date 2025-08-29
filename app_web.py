@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, render_template, jsonify
 from flask_socketio import SocketIO, emit
 import pandas as pd
 import numpy as np
@@ -10,19 +10,9 @@ import time
 import requests
 import pytz
 
-# Importa módulos SNE
-from visualizacao_avancada import VisualizacaoSNE
-from linguagem_proprietaria import LinguagemSNE
-from exploracao_temporal import ExploracaoTemporalSNE
-
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "sne_secret_key_2024"
 socketio = SocketIO(app, cors_allowed_origins="*")
-
-# Instâncias dos módulos SNE
-visualizacao = VisualizacaoSNE()
-linguagem = LinguagemSNE()
-exploracao = ExploracaoTemporalSNE()
 
 # Configurações
 symbol = "BTCUSDT"
@@ -33,10 +23,7 @@ br_tz = pytz.timezone("America/Sao_Paulo")
 # Estado global da aplicação
 estado_app = {
     "dados_atuais": None,
-    "ultima_atualizacao": None,
-    "interpretacoes_ativas": [],
-    "zonas_magneticas": [],
-    "ressonancias_detectadas": []
+    "ultima_atualizacao": None
 }
 
 def buscar_dados_binance():
@@ -70,58 +57,33 @@ def buscar_dados_binance():
         })
         df.set_index("time", inplace=True)
         
-        # Calcula indicadores
+        # Calcula indicadores básicos
         df["EMA8"] = df["close"].ewm(span=8).mean()
         df["EMA21"] = df["close"].ewm(span=21).mean()
         df["SMA200"] = df["close"].rolling(window=20).mean()
         df["densidade"] = 1 / (abs(df["EMA8"] - df["EMA21"]) + abs(df["EMA21"] - df["SMA200"]) + 1e-6)
         
-        print(f"[BINANCE] Dados processados: {len(df)} registros, Preço atual: {df["close"].iloc[-1]:.2f}")
+        print(f"[BINANCE] Dados processados: {len(df)} registros, Preço atual: {df[\"close\"].iloc[-1]:.2f}")
         return df
         
     except Exception as e:
         print(f"[BINANCE] Erro ao buscar dados: {e}")
         return None
 
-def analisar_dados_sne(df):
+def analisar_dados_simples(df):
     if df is None or df.empty:
         return {}
     
     analise = {
         "timestamp": datetime.now().isoformat(),
         "preco_atual": float(df["close"].iloc[-1]),
-        "energia_magnetica": float(df["densidade"].iloc[-1]) if "densidade" in df.columns else 0,
-        "zonas_magneticas": [],
-        "ressonancias": [],
-        "fluxos_gravitacionais": [],
-        "interpretacoes": []
+        "volume_atual": float(df["volume"].iloc[-1]),
+        "trades_atual": int(df["trades"].iloc[-1]),
+        "ema8": float(df["EMA8"].iloc[-1]),
+        "ema21": float(df["EMA21"].iloc[-1]),
+        "sma200": float(df["SMA200"].iloc[-1]),
+        "densidade": float(df["densidade"].iloc[-1])
     }
-    
-    # Detecta zonas magnéticas
-    if "densidade" in df.columns:
-        zonas_altas = df[df["densidade"] > df["densidade"].quantile(0.9)]
-        for _, row in zonas_altas.iterrows():
-            zona = {
-                "preco": float(row["close"]),
-                "forca": float(row["densidade"]),
-                "timestamp": row.name.isoformat()
-            }
-            analise["zonas_magneticas"].append(zona)
-    
-    # Detecta ressonâncias
-    eventos_similares = exploracao.sobrepor_eventos_historicos(df, float(df["close"].iloc[-1]))
-    analise["ressonancias"] = eventos_similares[:5]
-    
-    # Analisa fluxos gravitacionais
-    tendencia = "ascendente" if df["EMA8"].iloc[-1] > df["EMA21"].iloc[-1] else "descendente"
-    intensidade = abs(df["EMA8"].iloc[-1] - df["EMA21"].iloc[-1]) / df["close"].iloc[-1]
-    
-    fluxo = {
-        "direcao": tendencia,
-        "intensidade": float(intensidade),
-        "timestamp": datetime.now().isoformat()
-    }
-    analise["fluxos_gravitacionais"].append(fluxo)
     
     return analise
 
@@ -137,8 +99,8 @@ def atualizar_dados_background():
                 
                 print(f"[SNE] Dados carregados: {len(df)} registros")
                 
-                # Executa análise SNE
-                analise = analisar_dados_sne(df)
+                # Executa análise simples
+                analise = analisar_dados_simples(df)
                 
                 # Emite dados via WebSocket
                 dados = df.reset_index().to_dict("records")
@@ -153,7 +115,7 @@ def atualizar_dados_background():
                     "timestamp": datetime.now().isoformat()
                 })
                 
-                print(f"[SNE] Dados atualizados: {len(df)} registros, Preço: {df["close"].iloc[-1]:.2f}")
+                print(f"[SNE] Dados atualizados: {len(df)} registros, Preço: {df[\"close\"].iloc[-1]:.2f}")
             else:
                 print("[SNE] Nenhum dado recebido da Binance")
             
@@ -169,7 +131,7 @@ def index():
 
 @app.route("/api/dados")
 def api_dados():
-    print(f"[API] Solicitação de dados - Estado: {estado_app["dados_atuais"] is not None}")
+    print(f"[API] Solicitação de dados - Estado: {estado_app[\"dados_atuais\"] is not None}")
     
     if estado_app["dados_atuais"] is not None and not estado_app["dados_atuais"].empty:
         dados = estado_app["dados_atuais"].reset_index().to_dict("records")
@@ -194,7 +156,7 @@ def api_dados():
 @app.route("/api/analise")
 def api_analise():
     if estado_app["dados_atuais"] is not None:
-        analise = analisar_dados_sne(estado_app["dados_atuais"])
+        analise = analisar_dados_simples(estado_app["dados_atuais"])
         return jsonify(analise)
     else:
         return jsonify({
@@ -216,7 +178,7 @@ def handle_solicitar_dados():
     print("[WebSocket] Cliente solicitou dados")
     
     if estado_app["dados_atuais"] is not None and not estado_app["dados_atuais"].empty:
-        analise = analisar_dados_sne(estado_app["dados_atuais"])
+        analise = analisar_dados_simples(estado_app["dados_atuais"])
         dados = estado_app["dados_atuais"].reset_index().to_dict("records")
         
         # Converte timestamps para string
