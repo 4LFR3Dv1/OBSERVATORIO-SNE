@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: sne-observatorio
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 app_web:app
+                envVars:
+              - key: PYTHON_VERSION
+                value: 3.9.16
+              - key: PORT
+                value: 8080
+    healthCheckPath: /
+    autoDeploy: true
