@@ -63,7 +63,7 @@ def buscar_dados_binance():
         df["SMA200"] = df["close"].rolling(window=20).mean()
         df["densidade"] = 1 / (abs(df["EMA8"] - df["EMA21"]) + abs(df["EMA21"] - df["SMA200"]) + 1e-6)
         
-        print(f"[BINANCE] Dados processados: {len(df)} registros, Preço atual: {df[\"close\"].iloc[-1]:.2f}")
+        print(f"[BINANCE] Dados processados: {len(df)} registros, Preço atual: {df["close"].iloc[-1]:.2f}")
         return df
         
     except Exception as e:
@@ -115,7 +115,7 @@ def atualizar_dados_background():
                     "timestamp": datetime.now().isoformat()
                 })
                 
-                print(f"[SNE] Dados atualizados: {len(df)} registros, Preço: {df[\"close\"].iloc[-1]:.2f}")
+                print(f"[SNE] Dados atualizados: {len(df)} registros, Preço: {df["close"].iloc[-1]:.2f}")
             else:
                 print("[SNE] Nenhum dado recebido da Binance")
             
@@ -131,7 +131,7 @@ def index():
 
 @app.route("/api/dados")
 def api_dados():
-    print(f"[API] Solicitação de dados - Estado: {estado_app[\"dados_atuais\"] is not None}")
+    print(f"[API] Solicitação de dados - Estado: {estado_app["dados_atuais"] is not None}")
     
     if estado_app["dados_atuais"] is not None and not estado_app["dados_atuais"].empty:
         dados = estado_app["dados_atuais"].reset_index().to_dict("records")
